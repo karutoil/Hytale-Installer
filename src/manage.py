@@ -12,11 +12,11 @@ from scriptlets._common.get_wan_ip import *
 # import:org_python/venv_path_include.py
 import yaml
 # Game application source - what type of game is being installed?
-# from scriptlets.warlock.base_app import *
+from scriptlets.warlock.base_app import *
 # from scriptlets.warlock.steam_app import *
 # Game services are usually either an RCON, HTTP, or base type service.
 # Include the necessary type and remove the rest.
-# from scriptlets.warlock.base_service import *
+from scriptlets.warlock.base_service import *
 # from scriptlets.warlock.http_service import *
 # from scriptlets.warlock.rcon_service import *
 from scriptlets.warlock.ini_config import *
@@ -29,7 +29,7 @@ from scriptlets.warlock.default_run import *
 here = os.path.dirname(os.path.realpath(__file__))
 
 
-class GameApp(SteamApp):
+class GameApp(BaseApp):
 	"""
 	Game application manager
 	"""
@@ -37,18 +37,14 @@ class GameApp(SteamApp):
 	def __init__(self):
 		super().__init__()
 
-		self.name = 'GameName'
-		self.desc = 'Longer identifier for the game server'
-		self.steam_id = '123456789'
-		self.services = ('list-of-services',)
+		self.name = 'Hytale'
+		self.desc = 'Hytale Dedicated Server'
+		self.services = ('hytale-server',)
 
 		self.configs = {
 			'manager': INIConfig('manager', os.path.join(here, '.settings.ini'))
 		}
 		self.load()
-		
-		# Steam games that support branches should use this snippet too
-		self.steam_branch = self.get_option_value('Steam Branch')
 
 	def get_save_files(self) -> Union[list, None]:
 		"""
@@ -70,7 +66,7 @@ class GameApp(SteamApp):
 		return os.path.join(here, 'AppFiles')
 
 
-class GameService(RCONService):
+class GameService(BaseService):
 	"""
 	Service definition and handler
 	"""

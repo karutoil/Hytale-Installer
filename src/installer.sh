@@ -8,10 +8,10 @@
 # @AUTHOR  Charlie Powell <cdp1337@bitsnbytes.dev>
 # @CATEGORY Game Server
 # @TRMM-TIMEOUT 600
-# @WARLOCK-TITLE Game Name
-# @WARLOCK-IMAGE media/some-game-image.webp
-# @WARLOCK-ICON media/some-game-icon.webp
-# @WARLOCK-THUMBNAIL media/some-game-thumbnail.webp
+# @WARLOCK-TITLE Hytale
+# @WARLOCK-IMAGE media/content-upper-new-1920.jpg
+# @WARLOCK-ICON media/logo-h.png
+# @WARLOCK-THUMBNAIL media/logo.png
 #
 # Supports:
 #   Debian 12, 13
@@ -38,14 +38,13 @@
 ############################################
 
 # Name of the game (used to create the directory)
-GAME="GameName"
-GAME_DESC="Game Dedicated Server"
-REPO="your-github/your-repo"
-WARLOCK_GUID="replace-with-guid-once-compiled"
-STEAM_ID="123456789"
-GAME_USER="steam"
+GAME="Hytale"
+GAME_DESC="Hytale Dedicated Server"
+REPO="BitsNBytes25/Hytale-Installer"
+WARLOCK_GUID="f73feed8-7202-0747-b5ba-efd8e8a0b002"
+GAME_USER="hytale"
 GAME_DIR="/home/${GAME_USER}/${GAME}"
-GAME_SERVICE="your-game-server"
+GAME_SERVICE="hytale-server"
 
 # compile:usage
 # compile:argparse
@@ -58,6 +57,8 @@ GAME_SERVICE="your-game-server"
 # scriptlet:bz_eval_tui/print_header.sh
 # scriptlet:ufw/install.sh
 # scriptlet:warlock/install_warlock_manager.sh
+# scriptlet:openjdk/install.sh
+# scriptlet:_common/firewall_allow.sh
 
 print_header "$GAME_DESC *unofficial* Installer"
 
@@ -87,7 +88,7 @@ function install_application() {
 	fi
 
 	# Preliminary requirements
-	package_install curl sudo python3-venv
+	package_install curl sudo python3-venv unzip
 
 	if [ "$FIREWALL" == "1" ]; then
 		if [ "$(get_enabled_firewall)" == "none" ]; then
@@ -98,11 +99,20 @@ function install_application() {
 
 	[ -e "$GAME_DIR/AppFiles" ] || sudo -u $GAME_USER mkdir -p "$GAME_DIR/AppFiles"
 
+	# Hytale requires Java and recommends JRE 25.x, so manually install it so we can ensure compatibility.
+	local JAVA_PATH="$(install_openjdk 25)"
 
-	# To download a game with steamcmd, include the following header
-	#  # scriptlet:steam/install-steamcmd.sh
-	# and use 
-	#  install_steamcmd
+	# They also ship their own downloader, so grab that too
+	download https://downloader.hytale.com/hytale-downloader.zip "$GAME_DIR/AppFiles/hytale-downloader.zip"
+	unzip -o "$GAME_DIR/AppFiles/hytale-downloader.zip" -d "$GAME_DIR/AppFiles/"
+
+	# At the moment Hytale requires authentication to download the server files,
+	# so we must install the game binary here vs inside the management console.
+	local GAME_VERS="$("$GAME_DIR/AppFiles/hytale-downloader-linux-amd64" --print-version)"
+	"$GAME_DIR/AppFiles/hytale-downloader-linux-amd64"
+	unzip -o "$GAME_DIR/AppFiles/$GAME_VERS.zip" -d "$GAME_DIR/AppFiles/"
+	chown -R $GAME_USER:$GAME_USER "$GAME_DIR/AppFiles/"
+
 	
 	# Install the management script
 	install_warlock_manager "$REPO" "$BRANCH"
@@ -117,17 +127,13 @@ function install_application() {
 	chown $GAME_USER:$GAME_USER "$GAME_DIR/installer.sh"
 	
 	# Use the management script to install the game server
-	if ! $GAME_DIR/manage.py --update; then
-		echo "Could not install $GAME_DESC, exiting" >&2
-		exit 1
-	fi
-	
-	# If you need to configure the firewall for this game service here,
-	# ensure you include the following header
-	# Ideally the management script should handle this if possible to provide the operator with an easy way to change the port.
-	#  # scriptlet:_common/firewall_allow.sh
-	# and then run
-	# firewall_allow --port ${PORT} --udp --comment "${GAME_DESC} Game Port"
+	# (disabled until Hytale allows unauthenticated downloads)
+	#if ! $GAME_DIR/manage.py --update; then
+	#	echo "Could not install $GAME_DESC, exiting" >&2
+	#	exit 1
+	#fi
+
+	firewall_allow --port 5520 --udp --comment "${GAME_DESC} Game Port"
 
 	# Install system service file to be loaded by systemd
     cat > /etc/systemd/system/${GAME_SERVICE}.service <<EOF
