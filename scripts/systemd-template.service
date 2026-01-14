@@ -15,7 +15,7 @@ StandardOutput=journal
 StandardError=journal
 WorkingDirectory=$GAME_DIR/AppFiles
 Environment=XDG_RUNTIME_DIR=/run/user/$(id -u $GAME_USER)
-ExecStart=${JAVA_PATH}bin/java -jar $GAME_DIR/AppFiles/Server/HytaleServer.jar --assets $GAME_DIR/AppFiles/Assets.zip --accept-early-plugins
+ExecStart=${JAVA_PATH}bin/java -XX:+UnlockExperimentalVMOptions -XX:+UseShenandoahGC -XX:ShenandoahUncommitDelay=300000 -XX:+AlwaysPreTouch -jar $GAME_DIR/AppFiles/Server/HytaleServer.jar --assets $GAME_DIR/AppFiles/Assets.zip --accept-early-plugins
 #ExecStop=$GAME_DIR/manage.py --pre-stop --service ${GAME_SERVICE}
 #ExecStartPost=$GAME_DIR/manage.py --post-start --service ${GAME_SERVICE}
 Restart=on-failure
