@@ -2000,6 +2000,130 @@ class INIConfig(BaseConfig):
 				check_path = os.path.dirname(check_path)
 
 
+
+class JSONConfig(BaseConfig):
+	def __init__(self, group_name: str, path: str):
+		super().__init__(group_name)
+		self.path = path
+		self.group = group_name
+		self.data = {}
+
+	def get_value(self, name: str) -> Union[str, int, bool]:
+		"""
+		Get a configuration option from the config
+
+		:param name: Name of the option
+		:return:
+		"""
+		if name not in self.options:
+			print('Invalid option: %s, not present in %s configuration!' % (name, os.path.basename(self.path)), file=sys.stderr)
+			return ''
+
+		key = self.options[name][1]
+		default = self.options[name][2]
+		val_type = self.options[name][3]
+
+		lookup = self.data
+		if key.startswith('/'):
+			key = key[1:]
+		for part in key.split('/'):
+			if part in lookup:
+				lookup = lookup[part]
+			else:
+				lookup = default
+				break
+
+		return BaseConfig.convert_to_system_type(lookup, val_type)
+
+	def set_value(self, name: str, value: Union[str, int, bool]):
+		"""
+		Set a configuration option in the config
+
+		:param name: Name of the option
+		:param value: Value to save
+		:return:
+		"""
+		if name not in self.options:
+			print('Invalid option: %s, not present in %s configuration!' % (name, os.path.basename(self.path)), file=sys.stderr)
+			return
+
+		key = self.options[name][1]
+
+		if key.startswith('/'):
+			key = key[1:]
+		lookup = self.data
+		parts = key.split('/')
+		counter = 0
+		for part in parts:
+			counter += 1
+
+			if counter == len(parts):
+				lookup[part] = value
+			else:
+				if part not in lookup:
+					lookup[part] = {}
+				lookup = lookup[part]
+
+	def has_value(self, name: str) -> bool:
+		"""
+		Check if a configuration option has been set
+
+		:param name: Name of the option
+		:return:
+		"""
+		if name not in self.options:
+			return False
+
+		key = self.options[name][1]
+
+		lookup = self.data
+		if key.startswith('/'):
+			key = key[1:]
+		for part in key.split('/'):
+			if part in lookup:
+				lookup = lookup[part]
+			else:
+				return False
+
+		return lookup != ''
+
+	def exists(self) -> bool:
+		"""
+		Check if the config file exists on disk
+		:return:
+		"""
+		return os.path.exists(self.path)
+
+	def load(self):
+		"""
+		Load the configuration file from disk
+		:return:
+		"""
+		if os.path.exists(self.path):
+			with open(self.path, 'r') as f:
+				self.data = json.load(f)
+
+	def save(self):
+		"""
+		Save the configuration file back to disk
+		:return:
+		"""
+		with open(self.path, 'w') as f:
+			json.dump(self.data, f, indent=4)
+
+		# Change ownership to game user if running as root
+		if os.geteuid() == 0:
+			# Determine game user based on parent directories
+			check_path = os.path.dirname(self.path)
+			while check_path != '/' and check_path != '':
+				if os.path.exists(check_path):
+					stat_info = os.stat(check_path)
+					uid = stat_info.st_uid
+					gid = stat_info.st_gid
+					os.chown(self.path, uid, gid)
+					break
+				check_path = os.path.dirname(check_path)
+
 class PropertiesConfig(BaseConfig):
 	"""
 	Configuration handler for Java-style .properties files
@@ -2839,7 +2963,7 @@ class GameService(BaseService):
 		self.service = service
 		self.game = game
 		self.configs = {
-			'server': PropertiesConfig('server', os.path.join(here, 'AppFiles/server.properties'))
+			'config': JSONConfig('config', os.path.join(here, 'AppFiles/config.json'))
 		}
 		self.load()
 
@@ -2858,27 +2982,6 @@ class GameService(BaseService):
 
 		return True
 
-	def option_value_updated(self, option: str, previous_value, new_value):
-		"""
-		Handle any special actions needed when an option value is updated
-		:param option:
-		:param previous_value:
-		:param new_value:
-		:return:
-		"""
-
-		# Special option actions
-		if option == 'Server Port':
-			# Update firewall for game port change
-			if previous_value:
-				firewall_remove(int(previous_value), 'tcp')
-			firewall_allow(int(new_value), 'tcp', 'Allow %s game port' % self.game.desc)
-		elif option == 'Query Port':
-			# Update firewall for game port change
-			if previous_value:
-				firewall_remove(int(previous_value), 'udp')
-			firewall_allow(int(new_value), 'udp', 'Allow %s query port' % self.game.desc)
-
 	def is_api_enabled(self) -> bool:
 		"""
 		Check if API is enabled for this service
@@ -2893,7 +2996,9 @@ class GameService(BaseService):
 		Get a list of current players on the server, or None if the API is unavailable
 		:return:
 		"""
-		# @TODO
+		# This currently does not work because the API only returns the last connected player...
+		# over, and over, and over....
+		# If there are 10 players connected, it's just the last player 10 times.
 		return None
 
 	def get_player_count(self) -> Union[int, None]:
@@ -2928,14 +3033,16 @@ class GameService(BaseService):
 		Get the name of this game server instance
 		:return:
 		"""
-		return self.get_option_value('Level Name')
+		return self.get_option_value('Server Name')
 
 	def get_port(self) -> Union[int, None]:
 		"""
 		Get the primary port of the service, or None if not applicable
 		:return:
 		"""
-		return self.get_option_value('Server Port')
+		# @todo decide if this should be configuable
+		#return self.get_option_value('Server Port')
+		return 5520
 
 	def get_game_pid(self) -> int:
 		"""

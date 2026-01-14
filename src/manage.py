@@ -22,6 +22,7 @@ from scriptlets.warlock.base_service import *
 # from scriptlets.warlock.http_service import *
 # from scriptlets.warlock.rcon_service import *
 from scriptlets.warlock.ini_config import *
+from scriptlets.warlock.json_config import *
 from scriptlets.warlock.properties_config import *
 from scriptlets.warlock.default_run import *
 
@@ -202,7 +203,7 @@ class GameService(BaseService):
 		self.service = service
 		self.game = game
 		self.configs = {
-			'server': PropertiesConfig('server', os.path.join(here, 'AppFiles/server.properties'))
+			'config': JSONConfig('config', os.path.join(here, 'AppFiles/config.json'))
 		}
 		self.load()
 
@@ -221,27 +222,6 @@ class GameService(BaseService):
 
 		return True
 
-	def option_value_updated(self, option: str, previous_value, new_value):
-		"""
-		Handle any special actions needed when an option value is updated
-		:param option:
-		:param previous_value:
-		:param new_value:
-		:return:
-		"""
-
-		# Special option actions
-		if option == 'Server Port':
-			# Update firewall for game port change
-			if previous_value:
-				firewall_remove(int(previous_value), 'tcp')
-			firewall_allow(int(new_value), 'tcp', 'Allow %s game port' % self.game.desc)
-		elif option == 'Query Port':
-			# Update firewall for game port change
-			if previous_value:
-				firewall_remove(int(previous_value), 'udp')
-			firewall_allow(int(new_value), 'udp', 'Allow %s query port' % self.game.desc)
-
 	def is_api_enabled(self) -> bool:
 		"""
 		Check if API is enabled for this service
@@ -256,7 +236,9 @@ class GameService(BaseService):
 		Get a list of current players on the server, or None if the API is unavailable
 		:return:
 		"""
-		# @TODO
+		# This currently does not work because the API only returns the last connected player...
+		# over, and over, and over....
+		# If there are 10 players connected, it's just the last player 10 times.
 		return None
 
 	def get_player_count(self) -> Union[int, None]:
@@ -291,14 +273,16 @@ class GameService(BaseService):
 		Get the name of this game server instance
 		:return:
 		"""
-		return self.get_option_value('Level Name')
+		return self.get_option_value('Server Name')
 
 	def get_port(self) -> Union[int, None]:
 		"""
 		Get the primary port of the service, or None if not applicable
 		:return:
 		"""
-		return self.get_option_value('Server Port')
+		# @todo decide if this should be configuable
+		#return self.get_option_value('Server Port')
+		return 5520
 
 	def get_game_pid(self) -> int:
 		"""

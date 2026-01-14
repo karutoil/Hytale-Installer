@@ -1,71 +1,43 @@
-game:
-  - name: APIPort
-    section: "/Script/Vein.VeinGameSession"
-    key: HTTPPort
-    default: ""
-    type: int
-    help: "The port for the server API. Leave blank to disable."
-  - name: Public
-    section: "/Script/Vein.VeinGameSession"
-    key: bPublic
-    default: "true"
-    type: bool
-    help: "Make the server publicly visible in server browsers."
-  - name: GamePort
-    section: URL
-    key: Port
-    default: "7777"
-    type: int
-    help: "The main port for game connections."
-  - name: MaxPlayers
-    section: "/Script/Engine.GameSession"
-    key: MaxPlayers
-    default: "16"
-    type: int
-    help: "Maximum number of players allowed on the server."
-  - name: ServerDescription
-    section: "/Script/Vein.VeinGameSession"
-    key: ServerDescription
-    default: "Short description of your server and your community"
-    type: text
-    help: "A brief description of your server that appears in server browsers."
-  - name: ServerName
-    section: "/Script/Vein.VeinGameSession"
-    key: ServerName
-    default: "My Vein Server"
+config:
+  - name: Server Name
+    key: /ServerName
+    default: "Hytale Server"
     type: str
-    help: "The name of your server as it appears in server browsers."
-  - name: ServerPassword
-    section: "/Script/Vein.VeinGameSession"
-    key: Password
+    help: "Server name as displayed in server browsers."
+  - name: Message of the Day
+    key: /MOTD
+    default: ""
+    type: text
+    help: "Message of the day displayed to players when they join the server."
+  - name: Password
+    key: /Password
     default: ""
     type: str
     help: "Password required to join the server. Leave blank for no password."
-  - name: SteamQueryPort
-    section: OnlineSubsystemSteam
-    key: GameServerQueryPort
-    default: "27015"
+  - name: Max Players
+    key: /MaxPlayers
+    default: 100
     type: int
-    help: "The Steam query port for server listing and queries."
-  - name: VACEnabled
-    section: OnlineSubsystemSteam
-    key: bVACEnabled
-    default: "false"
-    type: bool
-    help: "Enable Valve Anti-Cheat (VAC) on the server."
-engine:
-  - name: AISpawner
-    section: ConsoleVariables
-    key: vein.AISpawner.Enabled
-    default: "true"
-    type: bool
-    help: "Enable or disable AI spawners on the server."
-  - name: PVPEnabled
-    section: ConsoleVariables
-    key: vein.PvP
-    default: "true"
-    type: bool
-    help: "Enable or disable PvP mode on the server."
+    help: "Maximum number of players allowed on the server."
+  - name: Max View Radius
+    key: /MaxViewRadius
+    default: 32
+    type: int
+    help: "Maximum view radius for players in chunks."
+  - name: World Name
+    key: /Defaults/World
+    default: "default"
+    type: str
+    help: "Name of the world to load or create."
+  - name: Game Mode
+    key: /Defaults/GameMode
+    default: "Adventure"
+    type: str
+    help: "Default game mode for players."
+    options:
+      - Adventure
+      - Creative
+      - Survival
 manager:
   - name: Game Branch
     section: Version
