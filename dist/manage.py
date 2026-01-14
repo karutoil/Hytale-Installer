@@ -2869,8 +2869,8 @@ class GameService(BaseService):
 		:return:
 		"""
 
-		# This game uses sockets for API communication, so it's always enabled.
-		return True
+		# This game uses sockets for API communication, so it's always enabled if the socket file exists
+		return os.path.exists('/var/run/%s.sock' % self.service)
 
 	def get_player_count(self) -> Union[int, None]:
 		"""
