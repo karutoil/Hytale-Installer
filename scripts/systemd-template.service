@@ -9,6 +9,10 @@ Type=simple
 LimitNOFILE=10000
 User=$GAME_USER
 Group=$GAME_USER
+Sockets=$GAME_SERVICE.socket
+StandardInput=socket
+StandardOutput=journal
+StandardError=journal
 WorkingDirectory=$GAME_DIR/AppFiles
 Environment=XDG_RUNTIME_DIR=/run/user/$(id -u $GAME_USER)
 ExecStart=${JAVA_PATH}bin/java -jar $GAME_DIR/AppFiles/Server/HytaleServer.jar --assets $GAME_DIR/AppFiles/Assets.zip --accept-early-plugins

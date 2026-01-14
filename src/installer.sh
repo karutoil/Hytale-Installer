@@ -28,6 +28,7 @@
 #   OVERRIDE_DIR=--dir=<src> - Use a custom installation directory instead of the default (optional)
 #   SKIP_FIREWALL=--skip-firewall - Do not install or configure a system firewall
 #   NONINTERACTIVE=--non-interactive - Run the installer in non-interactive mode (useful for scripted installs)
+#   GAME_BRANCH=--game-branch=latest|pre-release - Specify a specific branch of the game server to install DEFAULT=latest
 #   BRANCH=--branch=<str> - Use a specific branch of the management script repository DEFAULT=main
 #
 # Changelog:
@@ -109,8 +110,19 @@ function install_application() {
 	# At the moment Hytale requires authentication to download the server files,
 	# so we must install the game binary here vs inside the management console.
 	cd "$GAME_DIR/AppFiles/"
-	./hytale-downloader-linux-amd64
-	local GAME_VERS="$(./hytale-downloader-linux-amd64 -print-version)"
+	echo ""
+	echo ""
+	echo "====================================================="
+	echo ""
+	echo " IMPORTANT: Hytale Server Requires Authentication! "
+	echo ""
+	echo "====================================================="
+	echo ""
+	echo "You may be prompted to open a URL in your web browser to"
+	echo "authenticate your server."
+	echo ""
+	echo "Please open the link and authenticate if prompted."
+	./hytale-downloader-linux-amd64 -print-version
 	cd -
 	unzip -o "$GAME_DIR/AppFiles/$GAME_VERS.zip" -d "$GAME_DIR/AppFiles/"
 	chown -R $GAME_USER:$GAME_USER "$GAME_DIR/AppFiles/"
@@ -123,23 +135,28 @@ function install_application() {
 	# add them here as necessary, for example for RCON support:
 	#  sudo -u $GAME_USER $GAME_DIR/.venv/bin/pip install rcon
 
+	# Set the requested game branch for the manager to use
+	sudo -u $GAME_USER $GAME_DIR/manage.py --set-config "Game Branch" "$GAME_BRANCH"
+
 	# Install installer (this script) for uninstallation or manual work
 	download "https://raw.githubusercontent.com/${REPO}/refs/heads/${BRANCH}/dist/installer.sh" "$GAME_DIR/installer.sh"
 	chmod +x "$GAME_DIR/installer.sh"
 	chown $GAME_USER:$GAME_USER "$GAME_DIR/installer.sh"
 	
 	# Use the management script to install the game server
-	# (disabled until Hytale allows unauthenticated downloads)
-	#if ! $GAME_DIR/manage.py --update; then
-	#	echo "Could not install $GAME_DESC, exiting" >&2
-	#	exit 1
-	#fi
+	if ! $GAME_DIR/manage.py --update; then
+		echo "Could not install $GAME_DESC, exiting" >&2
+		exit 1
+	fi
 
 	firewall_allow --port 5520 --udp --comment "${GAME_DESC} Game Port"
 
 	# Install system service file to be loaded by systemd
     cat > /etc/systemd/system/${GAME_SERVICE}.service <<EOF
 # script:systemd-template.service
+EOF
+	cat > /etc/systemd/system/${GAME_SERVICE}.socket <<EOF
+# script:systemd-template.socket
 EOF
     systemctl daemon-reload
 

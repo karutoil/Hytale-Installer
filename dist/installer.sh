@@ -28,6 +28,7 @@
 #   --dir=<src> - Use a custom installation directory instead of the default (optional)
 #   --skip-firewall  - Do not install or configure a system firewall
 #   --non-interactive  - Run the installer in non-interactive mode (useful for scripted installs)
+#   --game-branch=<string> - latest|pre-release - Specify a specific branch of the game server to install DEFAULT=latest
 #   --branch=<str> - Use a specific branch of the management script repository DEFAULT=main
 #
 # Changelog:
@@ -55,6 +56,7 @@ Options:
     --dir=<src> - Use a custom installation directory instead of the default (optional)
     --skip-firewall  - Do not install or configure a system firewall
     --non-interactive  - Run the installer in non-interactive mode (useful for scripted installs)
+    --game-branch=<string> - latest|pre-release - Specify a specific branch of the game server to install DEFAULT=latest
     --branch=<str> - Use a specific branch of the management script repository DEFAULT=main
 
 Please ensure to run this script as root (or at least with sudo)
@@ -69,6 +71,7 @@ MODE_UNINSTALL=0
 OVERRIDE_DIR=""
 SKIP_FIREWALL=0
 NONINTERACTIVE=0
+GAME_BRANCH="latest"
 BRANCH="main"
 while [ "$#" -gt 0 ]; do
 	case "$1" in
@@ -80,6 +83,11 @@ while [ "$#" -gt 0 ]; do
 			shift 1;;
 		--skip-firewall) SKIP_FIREWALL=1; shift 1;;
 		--non-interactive) NONINTERACTIVE=1; shift 1;;
+		--game-branch=*)
+			GAME_BRANCH="${1#*=}";
+			[ "${GAME_BRANCH:0:1}" == "'" ] && [ "${GAME_BRANCH:0-1}" == "'" ] && GAME_BRANCH="${GAME_BRANCH:1:-1}"
+			[ "${GAME_BRANCH:0:1}" == '"' ] && [ "${GAME_BRANCH:0-1}" == '"' ] && GAME_BRANCH="${GAME_BRANCH:1:-1}"
+			shift 1;;
 		--branch=*)
 			BRANCH="${1#*=}";
 			[ "${BRANCH:0:1}" == "'" ] && [ "${BRANCH:0-1}" == "'" ] && BRANCH="${BRANCH:1:-1}"
@@ -834,21 +842,33 @@ engine:
     type: bool
     help: "Enable or disable PvP mode on the server."
 manager:
-  - name: Steam Branch
-    section: Steam
-    key: steam_branch
+  - name: Game Branch
+    section: Version
+    key: game_branch
     type: str
-    default: public
-    help: "The Steam branch to install the server from (e.g., stable, experimental)."
+    default: latest
+    help: "The branch to use for the game server installation."
     options:
-      - public
-      - experimental
-  - name: Steam Branch Password
-    section: Steam
-    key: steam_branch_password
+      - latest
+      - pre-release
+  - name: Delayed Shutdown Warning
+    section: Messages
+    key: shutdown_delayed
     type: str
-    default: ""
-    help: "The password for accessing a private Steam branch, if applicable."
+    default: Server is shutting down in {time} minutes
+    help: "Custom message broadcasted to players every 5 minutes before a delayed server shutdown.  Use '{time}' to replace with number of minutes remaining"
+  - name: Delayed Restart Warning
+    section: Messages
+    key: restart_delayed
+    type: str
+    default: Server is restarting in {time} minutes
+    help: "Custom message broadcasted to players every 5 minutes before a delayed server restart.  Use '{time}' to replace with number of minutes remaining"
+  - name: Delayed Update Warning
+    section: Messages
+    key: update_delayed
+    type: str
+    default: Server is updating in {time} minutes
+    help: "Custom message broadcasted to players every 5 minutes before a delayed server update.  Use '{time}' to replace with number of minutes remaining"
   - name: Shutdown Warning 5 Minutes
     section: Messages
     key: shutdown_5min
@@ -1170,8 +1190,19 @@ function install_application() {
 	# At the moment Hytale requires authentication to download the server files,
 	# so we must install the game binary here vs inside the management console.
 	cd "$GAME_DIR/AppFiles/"
-	./hytale-downloader-linux-amd64
-	local GAME_VERS="$(./hytale-downloader-linux-amd64 -print-version)"
+	echo ""
+	echo ""
+	echo "====================================================="
+	echo ""
+	echo " IMPORTANT: Hytale Server Requires Authentication! "
+	echo ""
+	echo "====================================================="
+	echo ""
+	echo "You may be prompted to open a URL in your web browser to"
+	echo "authenticate your server."
+	echo ""
+	echo "Please open the link and authenticate if prompted."
+	./hytale-downloader-linux-amd64 -print-version
 	cd -
 	unzip -o "$GAME_DIR/AppFiles/$GAME_VERS.zip" -d "$GAME_DIR/AppFiles/"
 	chown -R $GAME_USER:$GAME_USER "$GAME_DIR/AppFiles/"
@@ -1184,17 +1215,19 @@ function install_application() {
 	# add them here as necessary, for example for RCON support:
 	#  sudo -u $GAME_USER $GAME_DIR/.venv/bin/pip install rcon
 
+	# Set the requested game branch for the manager to use
+	sudo -u $GAME_USER $GAME_DIR/manage.py --set-config "Game Branch" "$GAME_BRANCH"
+
 	# Install installer (this script) for uninstallation or manual work
 	download "https://raw.githubusercontent.com/${REPO}/refs/heads/${BRANCH}/dist/installer.sh" "$GAME_DIR/installer.sh"
 	chmod +x "$GAME_DIR/installer.sh"
 	chown $GAME_USER:$GAME_USER "$GAME_DIR/installer.sh"
 	
 	# Use the management script to install the game server
-	# (disabled until Hytale allows unauthenticated downloads)
-	#if ! $GAME_DIR/manage.py --update; then
-	#	echo "Could not install $GAME_DESC, exiting" >&2
-	#	exit 1
-	#fi
+	if ! $GAME_DIR/manage.py --update; then
+		echo "Could not install $GAME_DESC, exiting" >&2
+		exit 1
+	fi
 
 	firewall_allow --port 5520 --udp --comment "${GAME_DESC} Game Port"
 
@@ -1210,6 +1243,10 @@ Type=simple
 LimitNOFILE=10000
 User=$GAME_USER
 Group=$GAME_USER
+Sockets=$GAME_SERVICE.socket
+StandardInput=socket
+StandardOutput=journal
+StandardError=journal
 WorkingDirectory=$GAME_DIR/AppFiles
 Environment=XDG_RUNTIME_DIR=/run/user/$(id -u $GAME_USER)
 ExecStart=${JAVA_PATH}bin/java -jar $GAME_DIR/AppFiles/Server/HytaleServer.jar --assets $GAME_DIR/AppFiles/Assets.zip --accept-early-plugins
@@ -1221,6 +1258,18 @@ TimeoutStartSec=600s
 
 [Install]
 WantedBy=multi-user.target
+EOF
+	cat > /etc/systemd/system/${GAME_SERVICE}.socket <<EOF
+[Unit]
+# DYNAMICALLY GENERATED FILE! Edit at your own risk
+BindsTo=$GAME_SERVICE.service
+
+[Socket]
+ListenFIFO=/var/run/$GAME_SERVICE.socket
+Service=$GAME_SERVICE.service
+RemoveOnStop=true
+SocketMode=0660
+SocketUser=$GAME_USER
 EOF
     systemctl daemon-reload
 

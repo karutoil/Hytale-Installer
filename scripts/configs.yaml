@@ -67,21 +67,33 @@ engine:
     type: bool
     help: "Enable or disable PvP mode on the server."
 manager:
-  - name: Steam Branch
-    section: Steam
-    key: steam_branch
+  - name: Game Branch
+    section: Version
+    key: game_branch
     type: str
-    default: public
-    help: "The Steam branch to install the server from (e.g., stable, experimental)."
+    default: latest
+    help: "The branch to use for the game server installation."
     options:
-      - public
-      - experimental
-  - name: Steam Branch Password
-    section: Steam
-    key: steam_branch_password
+      - latest
+      - pre-release
+  - name: Delayed Shutdown Warning
+    section: Messages
+    key: shutdown_delayed
     type: str
-    default: ""
-    help: "The password for accessing a private Steam branch, if applicable."
+    default: Server is shutting down in {time} minutes
+    help: "Custom message broadcasted to players every 5 minutes before a delayed server shutdown.  Use '{time}' to replace with number of minutes remaining"
+  - name: Delayed Restart Warning
+    section: Messages
+    key: restart_delayed
+    type: str
+    default: Server is restarting in {time} minutes
+    help: "Custom message broadcasted to players every 5 minutes before a delayed server restart.  Use '{time}' to replace with number of minutes remaining"
+  - name: Delayed Update Warning
+    section: Messages
+    key: update_delayed
+    type: str
+    default: Server is updating in {time} minutes
+    help: "Custom message broadcasted to players every 5 minutes before a delayed server update.  Use '{time}' to replace with number of minutes remaining"
   - name: Shutdown Warning 5 Minutes
     section: Messages
     key: shutdown_5min

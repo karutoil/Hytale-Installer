@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import pwd
+import os
+import re
 import random
 import string
 from scriptlets._common.firewall_allow import *
@@ -65,6 +67,112 @@ class GameApp(BaseApp):
 		"""
 		return os.path.join(here, 'AppFiles')
 
+	def get_latest_version(self) -> str:
+		"""
+		Get the latest version of the game server available from Hytale
+
+		:return:
+		"""
+		cmd = os.path.join(here, 'AppFiles', 'hytale-downloader-linux-amd64')
+		game_path = os.path.join(here, 'AppFiles')
+		version = None
+		args = [cmd, '-print-version']
+		branch = self.get_option_value('Game Branch')
+		if branch != 'latest':
+			args += ['-patchline', branch]
+		process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=game_path)
+		while True:
+			output = process.stdout.readline()
+			if output == b'' and process.poll() is not None:
+				break
+			if output:
+				line = output.decode().strip()
+				# Versions should simply be the version string, e.g. "1.0.0-tag"
+				# The output can also be a message to the user to authenticate though,
+				# which those should be skipped and simply printed to stdout.
+				if re.match(r'^\d+\.\d+\.\d+(-\w+)?$', line):
+					version = line
+					break
+				else:
+					print(line)
+		process.wait()
+
+		if version is None:
+			return ''
+		else:
+			return version
+
+	def check_update_available(self) -> bool:
+		"""
+		Check if Hytale issued an update for this game server.
+
+		:return:
+		"""
+		version = self.get_latest_version()
+
+		if os.path.exists(os.path.join(here, 'AppFiles', version + '.zip')):
+			print('Latest version (%s) is already downloaded.' % version)
+			return False
+		else:
+			print('New version available: %s' % version)
+			return True
+
+	def update(self):
+		"""
+		Update the game server to the latest version.
+
+		:return:
+		"""
+		# Stop any running services before updating
+		services = []
+		for service in self.get_services():
+			if service.is_running() or service.is_starting():
+				print('Stopping service %s for update...' % service.service)
+				services.append(service.service)
+				subprocess.Popen(['systemctl', 'stop', service.service])
+
+		if len(services) > 0:
+			# Wait for all services to stop, may take 5 minutes if players are online.
+			print('Waiting up to 5 minutes for all services to stop...')
+			counter = 0
+			while counter < 30:
+				all_stopped = True
+				counter += 1
+				for service in self.get_services():
+					if service.is_running() or service.is_starting() or service.is_stopping():
+						all_stopped = False
+						break
+				if all_stopped:
+					break
+				time.sleep(10)
+		else:
+			print('No running services found, proceeding with update...')
+
+		# Run the Hytale downloader to get the latest version
+		version = self.get_latest_version()
+		cmd = os.path.join(here, 'AppFiles', 'hytale-downloader-linux-amd64')
+		game_path = os.path.join(here, 'AppFiles')
+		args = [cmd]
+		branch = self.get_option_value('Game Branch')
+		if branch != 'latest':
+			args += ['-patchline', branch]
+		process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=game_path)
+		while True:
+			output = process.stdout.readline()
+			if output == b'' and process.poll() is not None:
+				break
+			if output:
+				print(output.decode().strip())
+		process.wait()
+
+	zip_path = os.path.join(here, 'AppFiles', version + '.zip')
+	if os.path.exists(zip_path):
+		# Just use the system's unzip for extraction, as these files are rather large.
+		print('Extracting game package...')
+		subprocess.run(['unzip', '-o', zip_path, '-d', os.path.join(here, 'AppFiles')])
+	else:
+		print('ERROR: Game package %s not found after download!' % zip_path)
+
 
 class GameService(BaseService):
 	"""
@@ -82,6 +190,16 @@ class GameService(BaseService):
 			'server': PropertiesConfig('server', os.path.join(here, 'AppFiles/server.properties'))
 		}
 		self.load()
+
+	def _api_cmd(self, cmd):
+		"""
+		Send a command to the game server via its Systemd socket
+
+		:param cmd:
+		:return:
+		"""
+		with open('/var/run/%s.sock' % self.service, 'w') as f:
+			f.write(cmd + '\n')
 
 	def option_value_updated(self, option: str, previous_value, new_value):
 		"""
@@ -222,15 +340,48 @@ def menu_first_run(game: GameApp):
 
 	svc = game.get_services()[0]
 
-	svc.option_ensure_set('Level Name')
-	svc.option_ensure_set('Server Port')
-	svc.option_ensure_set('RCON Port')
-	if not svc.option_has_value('RCON Password'):
-		# Generate a random password for RCON
-		random_password = ''.join(random.choices(string.ascii_letters + string.digits, k=32))
-		svc.set_option('RCON Password', random_password)
-	if not svc.option_has_value('Enable RCON'):
-		svc.set_option('Enable RCON', True)
+	if not os.path.exists(os.path.join(here, 'AppFiles', 'auth.enc')):
+		print('=================================')
+		print('NOTICE: You must authenticate with Hytale during server start!')
+		print('')
+		print('Starting service once to allow authentication, please wait...')
+
+		svc.start()
+		counter = 0
+		while counter < 60:
+			counter += 1
+			if svc.is_running():
+				break
+			time.sleep(1)
+
+		if not svc.is_running():
+			print('ERROR: Service failed to start for authentication, please check logs.')
+			sys.exit(1)
+
+		svc._api_cmd('/auth login device')
+		time.sleep(1)
+		svc.print_logs()
+
+		# Wait until the user follows the prompts.
+		counter = 0
+		auth_successful = False
+		while counter < 600:
+			counter += 1
+			logs = svc.get_logs()
+			if 'Authentication successful' in logs:
+				print('Authentication successful!')
+				auth_successful = True
+				break
+			time.sleep(1)
+
+		if auth_successful:
+			# Authentication successful, save the token in an encrypted file so we don't have to do this BS again
+			svc._api_cmd('/auth persistence Encrypted')
+			time.sleep(2)
+			svc._api_cmd('/auth status')
+			time.sleep(2)
+		svc.stop()
+
 
 if __name__ == '__main__':
 	game = GameApp()
