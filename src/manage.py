@@ -231,25 +231,9 @@ class GameService(BaseService):
 		Check if API is enabled for this service
 		:return:
 		"""
-		return (
-			self.get_option_value('Enable RCON') and
-			self.get_option_value('RCON Port') != '' and
-			self.get_option_value('RCON Password') != ''
-		)
 
-	def get_api_port(self) -> int:
-		"""
-		Get the API port from the service configuration
-		:return:
-		"""
-		return self.get_option_value('RCON Port')
-
-	def get_api_password(self) -> str:
-		"""
-		Get the API password from the service configuration
-		:return:
-		"""
-		return self.get_option_value('RCON Password')
+		# This game uses sockets for API communication, so it's always enabled.
+		return True
 
 	def get_player_count(self) -> Union[int, None]:
 		"""
