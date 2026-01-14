@@ -172,6 +172,17 @@ class GameApp(BaseApp):
 			# Just use the system's unzip for extraction, as these files are rather large.
 			print('Extracting game package...')
 			subprocess.run(['unzip', '-o', zip_path, '-d', os.path.join(here, 'AppFiles')])
+
+			if os.geteuid() == 0:
+				# Fix ownership of files to the original user
+				stat_info = os.stat(here)
+				uid = stat_info.st_uid
+				gid = stat_info.st_gid
+				for root, dirs, files in os.walk(os.path.join(here, 'AppFiles')):
+					for momo in dirs:
+						os.chown(os.path.join(root, momo), uid, gid)
+					for momo in files:
+						os.chown(os.path.join(root, momo), uid, gid)
 			return True
 		else:
 			print('ERROR: Game package %s not found after download!' % zip_path)
@@ -208,6 +219,8 @@ class GameService(BaseService):
 		with open('/var/run/%s.socket' % self.service, 'w') as f:
 			f.write(cmd + '\n')
 
+		return True
+
 	def option_value_updated(self, option: str, previous_value, new_value):
 		"""
 		Handle any special actions needed when an option value is updated
@@ -238,26 +251,33 @@ class GameService(BaseService):
 		# This game uses sockets for API communication, so it's always enabled if the socket file exists
 		return os.path.exists('/var/run/%s.socket' % self.service)
 
+	def get_players(self) -> Union[list, None]:
+		"""
+		Get a list of current players on the server, or None if the API is unavailable
+		:return:
+		"""
+		# @TODO
+		return None
+
 	def get_player_count(self) -> Union[int, None]:
 		"""
 		Get the current player count on the server, or None if the API is unavailable
 		:return:
 		"""
-		if self.is_api_enabled():
-			# TESTING
-			return 1
-
-		try:
-			ret = self._api_cmd('/list')
-			# ret should contain 'There are N of a max...' where N is the player count.
-			if ret is None:
-				return None
-			elif 'There are ' in ret:
-				return int(ret[10:ret.index(' of a max')].strip())
-			else:
-				return None
-		except:
+		ret = self._api_cmd('/who')
+		if ret is None:
 			return None
+
+		# Check logs for output, (in reverse order)
+		logs = self.get_logs().splitlines()
+		logs.reverse()
+		world_name = 'default'
+		for line in logs:
+			# Trim timestamp, (anything before the first ':')
+			line = line.split(': ', 1)[1].strip()
+			if line.startswith('%s (' % world_name):
+				return int(line.split('(')[1].split(')')[0])
+		return 0
 
 	def get_player_max(self) -> int:
 		"""
