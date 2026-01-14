@@ -28,7 +28,7 @@
 #   --dir=<src> - Use a custom installation directory instead of the default (optional)
 #   --skip-firewall  - Do not install or configure a system firewall
 #   --non-interactive  - Run the installer in non-interactive mode (useful for scripted installs)
-#   --game-branch=<string> - latest|pre-release - Specify a specific branch of the game server to install DEFAULT=latest
+#   --game-branch=<latest|pre-release> - Specify a specific branch of the game server to install DEFAULT=latest
 #   --branch=<str> - Use a specific branch of the management script repository DEFAULT=main
 #
 # Changelog:
@@ -56,7 +56,7 @@ Options:
     --dir=<src> - Use a custom installation directory instead of the default (optional)
     --skip-firewall  - Do not install or configure a system firewall
     --non-interactive  - Run the installer in non-interactive mode (useful for scripted installs)
-    --game-branch=<string> - latest|pre-release - Specify a specific branch of the game server to install DEFAULT=latest
+    --game-branch=<latest|pre-release> - Specify a specific branch of the game server to install DEFAULT=latest
     --branch=<str> - Use a specific branch of the management script repository DEFAULT=main
 
 Please ensure to run this script as root (or at least with sudo)
@@ -1204,7 +1204,6 @@ function install_application() {
 	echo "Please open the link and authenticate if prompted."
 	./hytale-downloader-linux-amd64 -print-version
 	cd -
-	unzip -o "$GAME_DIR/AppFiles/$GAME_VERS.zip" -d "$GAME_DIR/AppFiles/"
 	chown -R $GAME_USER:$GAME_USER "$GAME_DIR/AppFiles/"
 
 	
