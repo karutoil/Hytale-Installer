@@ -2048,6 +2048,10 @@ class JSONConfig(BaseConfig):
 			return
 
 		key = self.options[name][1]
+		val_type = self.options[name][3]
+
+		# JSON files can store native types, so convert value accordingly
+		value = BaseConfig.convert_to_system_type(value, val_type)
 
 		if key.startswith('/'):
 			key = key[1:]
@@ -2295,6 +2299,9 @@ def menu_delayed_action_game(game, action):
 	while True:
 		still_running = False
 		minutes_left = 55 - ((round(time.time()) - start) // 60)
+		player_msg = msg
+		if '{time}' in player_msg:
+			player_msg = player_msg.replace('{time}', str(minutes_left))
 
 		for service in services:
 			if service.is_running():
@@ -2310,8 +2317,6 @@ def menu_delayed_action_game(game, action):
 					service.stop()
 				else:
 					# Still online, check to see if we should send a message
-					if '{time}' in msg:
-						msg = msg.replace('{time}', str(minutes_left))
 
 					if minutes_left <= 5:
 						# Once the timer hits 5 minutes left, drop to the standard stop procedure.
@@ -2319,7 +2324,7 @@ def menu_delayed_action_game(game, action):
 
 					if minutes_left % 5 == 0 and minutes_left > 5:
 						# Send the warning every 5 minutes
-						service.send_message(msg)
+						service.send_message(player_msg)
 
 		if minutes_left % 5 == 0 and minutes_left > 5:
 			print('%s minutes remaining before %s.' % (str(minutes_left), action))
@@ -3021,6 +3026,15 @@ class GameService(BaseService):
 				return int(line.split('(')[1].split(')')[0])
 		return 0
 
+	def get_port_definitions(self) -> list:
+		"""
+		Get a list of port definitions for this service
+		:return:
+		"""
+		return [
+			(5520, 'udp', '%s game port' % self.game.desc)
+		]
+
 	def get_player_max(self) -> int:
 		"""
 		Get the maximum player count allowed on the server
@@ -3066,7 +3080,7 @@ class GameService(BaseService):
 		Force the game server to save the world via the game API
 		:return:
 		"""
-		self._api_cmd('save-all flush')
+		self._api_cmd('/world save')
 
 
 def menu_first_run(game: GameApp):

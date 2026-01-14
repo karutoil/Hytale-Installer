@@ -261,6 +261,15 @@ class GameService(BaseService):
 				return int(line.split('(')[1].split(')')[0])
 		return 0
 
+	def get_port_definitions(self) -> list:
+		"""
+		Get a list of port definitions for this service
+		:return:
+		"""
+		return [
+			(5520, 'udp', '%s game port' % self.game.desc)
+		]
+
 	def get_player_max(self) -> int:
 		"""
 		Get the maximum player count allowed on the server
@@ -306,7 +315,7 @@ class GameService(BaseService):
 		Force the game server to save the world via the game API
 		:return:
 		"""
-		self._api_cmd('save-all flush')
+		self._api_cmd('/world save')
 
 
 def menu_first_run(game: GameApp):
