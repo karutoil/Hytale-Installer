@@ -43,7 +43,7 @@
 # Name of the game (used to create the directory)
 GAME="Hytale"
 GAME_DESC="Hytale Dedicated Server"
-REPO="BitsNBytes25/Hytale-Installer"
+REPO="karutoil/Hytale-Installer"
 WARLOCK_GUID="f73feed8-7202-0747-b5ba-efd8e8a0b002"
 GAME_USER="hytale"
 GAME_DIR="/home/${GAME_USER}"
