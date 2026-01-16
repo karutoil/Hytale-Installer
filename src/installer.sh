@@ -141,7 +141,11 @@ function install_application() {
 	#  sudo -u $GAME_USER $GAME_DIR/.venv/bin/pip install rcon
 
 	# Set the requested game branch for the manager to use
-	sudo -u $GAME_USER $GAME_DIR/manage.py --set-config "Game Branch" "$GAME_BRANCH"
+	if [ -n "$INSTANCE_ID" ]; then
+		sudo -u $GAME_USER $GAME_DIR/manage.py --instance "$INSTANCE_ID" --set-config "Game Branch" "$GAME_BRANCH"
+	else
+		sudo -u $GAME_USER $GAME_DIR/manage.py --set-config "Game Branch" "$GAME_BRANCH"
+	fi
 
 	# Install installer (this script) for uninstallation or manual work
 	download "https://raw.githubusercontent.com/${REPO}/refs/heads/${BRANCH}/dist/installer.sh" "$GAME_DIR/installer.sh"
@@ -149,9 +153,16 @@ function install_application() {
 	chown $GAME_USER:$GAME_USER "$GAME_DIR/installer.sh"
 	
 	# Use the management script to install the game server
-	if ! $GAME_DIR/manage.py --update; then
-		echo "Could not install $GAME_DESC, exiting" >&2
-		exit 1
+	if [ -n "$INSTANCE_ID" ]; then
+		if ! $GAME_DIR/manage.py --instance "$INSTANCE_ID" --update; then
+			echo "Could not install $GAME_DESC, exiting" >&2
+			exit 1
+		fi
+	else
+		if ! $GAME_DIR/manage.py --update; then
+			echo "Could not install $GAME_DESC, exiting" >&2
+			exit 1
+		fi
 	fi
 
 	firewall_allow --port 5520 --udp --comment "${GAME_DESC} Game Port"
@@ -189,7 +200,11 @@ function postinstall() {
 	print_header "Performing postinstall"
 
 	# First run setup
-	$GAME_DIR/manage.py --first-run
+	if [ -n "$INSTANCE_ID" ]; then
+		$GAME_DIR/manage.py --instance "$INSTANCE_ID" --first-run
+	else
+		$GAME_DIR/manage.py --first-run
+	fi
 }
 
 ##
@@ -338,7 +353,11 @@ if [ "$MODE" == "uninstall" ]; then
 	fi
 
 	if prompt_yn -q --default-yes "Perform a backup before everything is wiped?"; then
-		$GAME_DIR/manage.py --backup
+		if [ -n "$INSTANCE_ID" ]; then
+			$GAME_DIR/manage.py --instance "$INSTANCE_ID" --backup
+		else
+			$GAME_DIR/manage.py --backup
+		fi
 	fi
 
 	uninstall_application
