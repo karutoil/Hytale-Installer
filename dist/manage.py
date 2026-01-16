@@ -379,7 +379,7 @@ class BaseApp:
 	Game application manager
 	"""
 
-	def __init__(self):
+	def __init__(self, instance_id=''):
 		self.name = ''
 		"""
 		:type str:
@@ -390,6 +390,12 @@ class BaseApp:
 		"""
 		:type str:
 		Description / full name of this game
+		"""
+
+		self.instance_id = instance_id
+		"""
+		:type str:
+		Instance ID for multi-instance support
 		"""
 
 		self.services = []
@@ -2502,6 +2508,15 @@ def run_manager(game):
 		action='store_true'
 	)
 
+	# Instance specification - for multi-instance support
+	parser.add_argument(
+		'--instance',
+		help='Specify the instance ID for multi-instance installations (optional)',
+		type=str,
+		default='',
+		metavar='instance-id'
+	)
+
 	# Service specification - some options can only be performed on a given service
 	parser.add_argument(
 		'--service',
@@ -2802,8 +2817,8 @@ class GameApp(BaseApp):
 	Game application manager
 	"""
 
-	def __init__(self):
-		super().__init__()
+	def __init__(self, instance_id=''):
+		super().__init__(instance_id)
 
 		self.name = 'Hytale'
 		self.desc = 'Hytale Dedicated Server'
@@ -3165,5 +3180,10 @@ def menu_first_run(game: GameApp):
 
 
 if __name__ == '__main__':
-	game = GameApp()
+	# Parse arguments first to get instance_id if provided
+	temp_parser = argparse.ArgumentParser(add_help=False)
+	temp_parser.add_argument('--instance', type=str, default='')
+	temp_args, _ = temp_parser.parse_known_args()
+	
+	game = GameApp(temp_args.instance)
 	run_manager(game)
