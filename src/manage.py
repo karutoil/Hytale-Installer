@@ -250,16 +250,25 @@ class GameService(BaseService):
 		if ret is None:
 			return None
 
-		# Check logs for output, (in reverse order)
-		logs = self.get_logs().splitlines()
-		logs.reverse()
+		# Start a watcher for journald (with follow directive) to watch logs for the output we want
 		world_name = 'default'
-		for line in logs:
-			# Trim timestamp, (anything before the first ':')
-			line = line.split(': ', 1)[1].strip()
-			if line.startswith('%s (' % world_name):
-				return int(line.split('(')[1].split(')')[0])
-		return 0
+		players = 0
+		process = subprocess.Popen(['timeout', '3', 'journalctl', '-qfu', self.service, '--no-pager'], stdout=subprocess.PIPE)
+		while True:
+			output = process.stdout.readline()
+			if output == b'' and process.poll() is not None:
+				break
+			if output:
+				line = output.decode().strip()
+				# Trim timestamp, (anything before the first ':')
+				if ': ' in line:
+					line = line.split(': ', 1)[1].strip()
+					if line.startswith('%s (' % world_name):
+						players = int(line.split('(')[1].split(')')[0])
+						break
+		process.kill()
+
+		return players
 
 	def get_port_definitions(self) -> list:
 		"""
