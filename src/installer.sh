@@ -71,12 +71,7 @@ print_header "$GAME_DESC *unofficial* Installer"
 
 # Generate instance ID if not provided
 if [ -z "$INSTANCE_ID" ]; then
-	INSTANCE_ID=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen 2>/dev/null || python3 -c "import uuid; print(uuid.uuid4())" 2>/dev/null)
-	if [ -z "$INSTANCE_ID" ]; then
-		# Fallback: generate a simple UUID-like string
-		INSTANCE_ID=$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' ')
-		INSTANCE_ID="${INSTANCE_ID:0:8}-${INSTANCE_ID:8:4}-${INSTANCE_ID:12:4}-${INSTANCE_ID:16}"
-	fi
+	INSTANCE_ID="default"
 fi
 
 # Set service name based on instance
