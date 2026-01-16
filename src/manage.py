@@ -42,10 +42,20 @@ class GameApp(BaseApp):
 
 		self.name = 'Hytale'
 		self.desc = 'Hytale Dedicated Server'
-		self.services = ('hytale-server',)
+		
+		# Support multi-instance configurations
+		# If instance_id is set, append it to service names and update paths
+		base_service = 'hytale-server'
+		if self.instance_id:
+			service_name = f'{base_service}@{self.instance_id}'
+		else:
+			service_name = base_service
+		
+		self.services = (service_name,)
 
+		config_path = os.path.join(here, '.settings.ini')
 		self.configs = {
-			'manager': INIConfig('manager', os.path.join(here, '.settings.ini'))
+			'manager': INIConfig('manager', config_path)
 		}
 		self.load()
 
@@ -66,7 +76,12 @@ class GameApp(BaseApp):
 
 		:return:
 		"""
-		return os.path.join(here, 'AppFiles')
+		# Support instance-specific directories
+		save_dir = os.path.join(here, 'AppFiles')
+		if self.instance_id:
+			# For multi-instance, use instance-specific subdirectory
+			save_dir = os.path.join(save_dir, f'instance-{self.instance_id}')
+		return save_dir
 
 	def get_latest_version(self) -> str:
 		"""
@@ -81,6 +96,7 @@ class GameApp(BaseApp):
 		branch = self.get_option_value('Game Branch')
 		if branch != 'latest':
 			args += ['-patchline', branch]
+		
 		process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=game_path)
 		while True:
 			output = process.stdout.readline()
@@ -125,7 +141,7 @@ class GameApp(BaseApp):
 		:return:
 		"""
 		# Stop any running services before updating
-		services = []
+		services, all_stopped = [], False
 		for service in self.get_services():
 			if service.is_running() or service.is_starting():
 				print('Stopping service %s for update...' % service.service)
@@ -149,7 +165,6 @@ class GameApp(BaseApp):
 		else:
 			print('No running services found, proceeding with update...')
 
-
 		version = self.get_latest_version()
 		zip_path = os.path.join(here, 'AppFiles', version + '.zip')
 		if not os.path.exists(zip_path):
@@ -160,6 +175,7 @@ class GameApp(BaseApp):
 			branch = self.get_option_value('Game Branch')
 			if branch != 'latest':
 				args += ['-patchline', branch]
+			
 			process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=game_path)
 			while True:
 				output = process.stdout.readline()
@@ -197,7 +213,8 @@ class GameService(BaseService):
 	def __init__(self, service: str, game: GameApp):
 		"""
 		Initialize and load the service definition
-		:param file:
+		:param service: Service name (may include instance ID)
+		:param game: GameApp instance
 		"""
 		super().__init__(service, game)
 		self.service = service
