@@ -15,9 +15,8 @@
     - "--non-interactive  - Run the installer in non-interactive mode (useful for scripted installs)"
     - "--game-branch=<latest|pre-release> - Specify a specific branch of the game server to install DEFAULT=latest"
     - "--branch=<str> - Use a specific branch of the management script repository DEFAULT=main"
-    - "--instance-id=<UUID> - Unique identifier for this game instance (generates UUID if omitted) OPTIONAL"
-    - "--instance-name=<string> - Human-readable name for this game instance OPTIONAL"
+    - "--instance-id=<UUID> - Specify a UUID for this instance (for multi-instance installs)"
+    - "--instance-name=<NAME> - Provide a human-readable name for this instance (optional)"
   image: media/content-upper-new-1920.jpg
   icon: media/logo-h.png
   thumbnail: media/logo.png
-
