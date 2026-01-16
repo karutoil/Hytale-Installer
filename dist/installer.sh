@@ -24,12 +24,14 @@
 #   None
 #
 # Syntax:
-#   --uninstall  - Perform an uninstallation
-#   --dir=<src> - Use a custom installation directory instead of the default (optional)
-#   --skip-firewall  - Do not install or configure a system firewall
-#   --non-interactive  - Run the installer in non-interactive mode (useful for scripted installs)
-#   --game-branch=<latest|pre-release> - Specify a specific branch of the game server to install DEFAULT=latest
-#   --branch=<str> - Use a specific branch of the management script repository DEFAULT=main
+#   MODE_UNINSTALL=--uninstall - Perform an uninstallation
+#   OVERRIDE_DIR=--dir=<src> - Use a custom installation directory instead of the default (optional)
+#   SKIP_FIREWALL=--skip-firewall - Do not install or configure a system firewall
+#   NONINTERACTIVE=--non-interactive - Run the installer in non-interactive mode (useful for scripted installs)
+#   GAME_BRANCH=--game-branch=<latest|pre-release> - Specify a specific branch of the game server to install DEFAULT=latest
+#   BRANCH=--branch=<str> - Use a specific branch of the management script repository DEFAULT=main
+#   INSTANCE_ID=--instance-id=<UUID> - Unique identifier for this game instance (generates UUID if omitted) OPTIONAL
+#   INSTANCE_NAME=--instance-name=<string> - Human-readable name for this game instance OPTIONAL
 #
 # Changelog:
 #   20251103 - New installer
@@ -45,7 +47,7 @@ REPO="BitsNBytes25/Hytale-Installer"
 WARLOCK_GUID="f73feed8-7202-0747-b5ba-efd8e8a0b002"
 GAME_USER="hytale"
 GAME_DIR="/home/${GAME_USER}"
-GAME_SERVICE="hytale-server"
+GAME_SERVICE_BASE="hytale-server"
 
 function usage() {
   cat >&2 <<EOD
@@ -58,6 +60,8 @@ Options:
     --non-interactive  - Run the installer in non-interactive mode (useful for scripted installs)
     --game-branch=<latest|pre-release> - Specify a specific branch of the game server to install DEFAULT=latest
     --branch=<str> - Use a specific branch of the management script repository DEFAULT=main
+    --instance-id=<UUID> - Unique identifier for this game instance (optional)
+    --instance-name=<string> - Human-readable name for this game instance (optional)
 
 Please ensure to run this script as root (or at least with sudo)
 
@@ -73,6 +77,8 @@ SKIP_FIREWALL=0
 NONINTERACTIVE=0
 GAME_BRANCH="latest"
 BRANCH="main"
+INSTANCE_ID=""
+INSTANCE_NAME=""
 while [ "$#" -gt 0 ]; do
 	case "$1" in
 		--uninstall) MODE_UNINSTALL=1; shift 1;;
@@ -92,6 +98,16 @@ while [ "$#" -gt 0 ]; do
 			BRANCH="${1#*=}";
 			[ "${BRANCH:0:1}" == "'" ] && [ "${BRANCH:0-1}" == "'" ] && BRANCH="${BRANCH:1:-1}"
 			[ "${BRANCH:0:1}" == '"' ] && [ "${BRANCH:0-1}" == '"' ] && BRANCH="${BRANCH:1:-1}"
+			shift 1;;
+		--instance-id=*)
+			INSTANCE_ID="${1#*=}";
+			[ "${INSTANCE_ID:0:1}" == "'" ] && [ "${INSTANCE_ID:0-1}" == "'" ] && INSTANCE_ID="${INSTANCE_ID:1:-1}"
+			[ "${INSTANCE_ID:0:1}" == '"' ] && [ "${INSTANCE_ID:0-1}" == '"' ] && INSTANCE_ID="${INSTANCE_ID:1:-1}"
+			shift 1;;
+		--instance-name=*)
+			INSTANCE_NAME="${1#*=}";
+			[ "${INSTANCE_NAME:0:1}" == "'" ] && [ "${INSTANCE_NAME:0-1}" == "'" ] && INSTANCE_NAME="${INSTANCE_NAME:1:-1}"
+			[ "${INSTANCE_NAME:0:1}" == '"' ] && [ "${INSTANCE_NAME:0-1}" == '"' ] && INSTANCE_NAME="${INSTANCE_NAME:1:-1}"
 			shift 1;;
 		-h|--help) usage;;
 	esac
@@ -1116,6 +1132,22 @@ function firewall_allow() {
 print_header "$GAME_DESC *unofficial* Installer"
 
 ############################################
+## Multi-Instance Support
+############################################
+
+# Generate instance ID if not provided
+if [ -z "$INSTANCE_ID" ]; then
+	INSTANCE_ID="default"
+fi
+
+# Set service name based on instance
+if [ "$INSTANCE_ID" != "default" ]; then
+	GAME_SERVICE="${GAME_SERVICE_BASE}@${INSTANCE_ID}"
+else
+	GAME_SERVICE="${GAME_SERVICE_BASE}"
+fi
+
+############################################
 ## Installer Actions
 ############################################
 
@@ -1195,9 +1227,17 @@ function install_application() {
 	chown $GAME_USER:$GAME_USER "$GAME_DIR/installer.sh"
 	
 	# Use the management script to install the game server
-	if ! $GAME_DIR/manage.py --update; then
-		echo "Could not install $GAME_DESC, exiting" >&2
-		exit 1
+	# Pass instance ID if provided
+	if [ "$INSTANCE_ID" != "default" ]; then
+		if ! $GAME_DIR/manage.py --instance "$INSTANCE_ID" --update; then
+			echo "Could not install $GAME_DESC, exiting" >&2
+			exit 1
+		fi
+	else
+		if ! $GAME_DIR/manage.py --update; then
+			echo "Could not install $GAME_DESC, exiting" >&2
+			exit 1
+		fi
 	fi
 
 	firewall_allow --port 5520 --udp --comment "${GAME_DESC} Game Port"
@@ -1249,7 +1289,12 @@ EOF
 	if [ -n "$WARLOCK_GUID" ]; then
 		# Register Warlock
 		[ -d "/var/lib/warlock" ] || mkdir -p "/var/lib/warlock"
-		echo -n "$GAME_DIR" > "/var/lib/warlock/${WARLOCK_GUID}.app"
+		# Use multi-instance registration format if instance ID is provided
+		if [ "$INSTANCE_ID" != "default" ]; then
+			echo -n "$GAME_DIR" > "/var/lib/warlock/${WARLOCK_GUID}.${INSTANCE_ID}.app"
+		else
+			echo -n "$GAME_DIR" > "/var/lib/warlock/${WARLOCK_GUID}.app"
+		fi
 	fi
 }
 
