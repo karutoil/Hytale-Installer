@@ -1,7 +1,10 @@
 [Unit]
 # DYNAMICALLY GENERATED FILE! Edit at your own risk
 # compile:noescape
-Description=$GAME_DESC
+# This service file supports both single instance and multi-instance deployments
+# Single instance: hytale-server.service
+# Multi-instance: hytale-server@<instance-id>.service (using systemd template)
+Description=$GAME_DESC%i
 After=network.target
 
 [Service]
@@ -9,7 +12,7 @@ Type=simple
 LimitNOFILE=10000
 User=$GAME_USER
 Group=$GAME_USER
-Sockets=$GAME_SERVICE.socket
+Sockets=%n.socket
 StandardInput=socket
 StandardOutput=journal
 StandardError=journal
