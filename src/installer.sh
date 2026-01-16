@@ -48,6 +48,7 @@ WARLOCK_GUID="f73feed8-7202-0747-b5ba-efd8e8a0b002"
 GAME_USER="hytale"
 GAME_DIR="/home/${GAME_USER}"
 GAME_SERVICE="hytale-server"
+GAME_SERVICE_FILE="hytale-server"
 INSTANCE_ID=""
 INSTANCE_NAME=""
 WARLOCK_INSTANCE_FILE=""
@@ -156,13 +157,20 @@ function install_application() {
 	firewall_allow --port 5520 --udp --comment "${GAME_DESC} Game Port"
 
 	# Install system service file to be loaded by systemd
-    cat > /etc/systemd/system/${GAME_SERVICE}.service <<EOF
+	# Note: GAME_SERVICE_FILE contains template name (e.g., hytale-server@) for multi-instance
+	# or plain name (e.g., hytale-server) for single instance
+    cat > /etc/systemd/system/${GAME_SERVICE_FILE}.service <<EOF
 # script:systemd-template.service
 EOF
-	cat > /etc/systemd/system/${GAME_SERVICE}.socket <<EOF
+	cat > /etc/systemd/system/${GAME_SERVICE_FILE}.socket <<EOF
 # script:systemd-template.socket
 EOF
     systemctl daemon-reload
+    
+    # Enable the service so it can be started
+    # GAME_SERVICE contains the full instance name (e.g., hytale-server@uuid)
+    systemctl enable ${GAME_SERVICE}.service 2>/dev/null || true
+    systemctl enable ${GAME_SERVICE}.socket 2>/dev/null || true
 
 	if [ -n "$WARLOCK_GUID" ]; then
 		# Register Warlock
@@ -195,11 +203,18 @@ function postinstall() {
 function uninstall_application() {
 	print_header "Performing uninstall_application"
 
-	systemctl disable $GAME_SERVICE
-	systemctl stop $GAME_SERVICE
+	# Stop and disable both service and socket (using instance name)
+	systemctl stop ${GAME_SERVICE}.service 2>/dev/null || true
+	systemctl stop ${GAME_SERVICE}.socket 2>/dev/null || true
+	systemctl disable ${GAME_SERVICE}.service 2>/dev/null || true
+	systemctl disable ${GAME_SERVICE}.socket 2>/dev/null || true
 
-	# Service files
-	[ -e "/etc/systemd/system/${GAME_SERVICE}.service" ] && rm "/etc/systemd/system/${GAME_SERVICE}.service"
+	# Remove the template or regular service files
+	# GAME_SERVICE_FILE contains the template name (e.g., hytale-server@ or hytale-server)
+	[ -e "/etc/systemd/system/${GAME_SERVICE_FILE}.service" ] && rm "/etc/systemd/system/${GAME_SERVICE_FILE}.service"
+	[ -e "/etc/systemd/system/${GAME_SERVICE_FILE}.socket" ] && rm "/etc/systemd/system/${GAME_SERVICE_FILE}.socket"
+	
+	systemctl daemon-reload 2>/dev/null || true
 
 	# Game files
 	[ -d "$GAME_DIR" ] && rm -rf "$GAME_DIR/AppFiles"
@@ -234,6 +249,8 @@ fi
 if [ -n "$INSTANCE_ID" ]; then
 	# Append instance ID to service name for multi-instance installations
 	GAME_SERVICE="${GAME_SERVICE}@${INSTANCE_ID}"
+	# For systemd template units, the file must be named with @ but no instance ID
+	GAME_SERVICE_FILE="${GAME_SERVICE_FILE}@"
 	WARLOCK_INSTANCE_FILE="/var/lib/warlock/${WARLOCK_GUID}.${INSTANCE_ID}.app"
 	
 	# For multi-instance, optionally create a separate directory per instance
