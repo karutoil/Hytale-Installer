@@ -1,11 +1,14 @@
 [Unit]
 # DYNAMICALLY GENERATED FILE! Edit at your own risk
 # compile:noescape
-BindsTo=$GAME_SERVICE.service
+# This socket file supports both single instance and multi-instance deployments
+# Single instance: hytale-server.socket
+# Multi-instance: hytale-server@<instance-id>.socket (using systemd template)
+BindsTo=%n.service
 
 [Socket]
-ListenFIFO=/var/run/$GAME_SERVICE.socket
-Service=$GAME_SERVICE.service
+ListenFIFO=/var/run/%n.socket
+Service=%n.service
 RemoveOnStop=true
 SocketMode=0660
 SocketUser=$GAME_USER
