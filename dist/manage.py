@@ -2807,7 +2807,16 @@ class GameApp(BaseApp):
 
 		self.name = 'Hytale'
 		self.desc = 'Hytale Dedicated Server'
-		self.services = ('hytale-server',)
+		
+		# Support multi-instance configurations
+		# If instance_id is set, append it to service names and update paths
+		base_service = 'hytale-server'
+		if self.instance_id:
+			service_name = f'{base_service}@{self.instance_id}'
+		else:
+			service_name = base_service
+		
+		self.services = (service_name,)
 
 		self.configs = {
 			'manager': INIConfig('manager', os.path.join(here, '.settings.ini'))
@@ -2831,7 +2840,12 @@ class GameApp(BaseApp):
 
 		:return:
 		"""
-		return os.path.join(here, 'AppFiles')
+		# Support instance-specific directories
+		save_dir = os.path.join(here, 'AppFiles')
+		if self.instance_id:
+			# For multi-instance, use instance-specific subdirectory
+			save_dir = os.path.join(save_dir, f'instance-{self.instance_id}')
+		return save_dir
 
 	def get_latest_version(self) -> str:
 		"""
