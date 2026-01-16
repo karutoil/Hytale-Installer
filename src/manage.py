@@ -47,16 +47,8 @@ class GameApp(BaseApp):
 
 		self.name = 'Hytale'
 		self.desc = 'Hytale Dedicated Server'
-		
-		# Support multi-instance configurations
-		# If instance_id is set, append it to service names and update paths
-		base_service = 'hytale-server'
-		if self.instance_id:
-			service_name = f'{base_service}@{self.instance_id}'
-		else:
-			service_name = base_service
-		
-		self.services = (service_name,)
+		self.base_service = 'hytale-server'
+		self.configure_services()
 
 		config_path = os.path.join(here, '.settings.ini')
 		self.configs = {
@@ -87,6 +79,12 @@ class GameApp(BaseApp):
 			# For multi-instance, use instance-specific subdirectory
 			save_dir = os.path.join(save_dir, f'instance-{self.instance_id}')
 		return save_dir
+
+	def configure_services(self):
+		"""Configure service names based on current instance_id and reset cache."""
+		service_name = f"{self.base_service}@{self.instance_id}" if self.instance_id else self.base_service
+		self.services = (service_name,)
+		self._svcs = None  # Reset cached services so get_services rebuilds
 
 	def get_latest_version(self) -> str:
 		"""
@@ -373,6 +371,12 @@ def menu_first_run(game: GameApp):
 		print('NOTICE: You must authenticate with Hytale during server start!')
 		print('')
 		print('Starting service once to allow authentication, please wait...')
+		print('Service name: %s' % svc.service)
+		
+		# Ensure service is enabled before attempting to start
+		subprocess.run(['systemctl', 'enable', svc.service + '.service'], check=False, stderr=subprocess.DEVNULL)
+		subprocess.run(['systemctl', 'enable', svc.service + '.socket'], check=False, stderr=subprocess.DEVNULL)
+		subprocess.run(['systemctl', 'daemon-reload'], check=False, stderr=subprocess.DEVNULL)
 
 		svc.start()
 		counter = 0
@@ -383,7 +387,9 @@ def menu_first_run(game: GameApp):
 			time.sleep(1)
 
 		if not svc.is_running():
-			print('ERROR: Service failed to start for authentication, please check logs.')
+			print('ERROR: Service failed to start for authentication.')
+			print('Please check service status with: systemctl status %s' % svc.service)
+			print('And check logs with: journalctl -u %s -n 50' % svc.service)
 			sys.exit(1)
 
 		svc._api_cmd('/auth login device')
