@@ -30,6 +30,8 @@
 #   NONINTERACTIVE=--non-interactive - Run the installer in non-interactive mode (useful for scripted installs)
 #   GAME_BRANCH=--game-branch=<latest|pre-release> - Specify a specific branch of the game server to install DEFAULT=latest
 #   BRANCH=--branch=<str> - Use a specific branch of the management script repository DEFAULT=main
+#   INSTANCE_ID=--instance-id=<UUID> - Unique identifier for this game instance (generates UUID if omitted) OPTIONAL
+#   INSTANCE_NAME=--instance-name=<string> - Human-readable name for this game instance OPTIONAL
 #
 # Changelog:
 #   20251103 - New installer
@@ -45,7 +47,7 @@ REPO="BitsNBytes25/Hytale-Installer"
 WARLOCK_GUID="f73feed8-7202-0747-b5ba-efd8e8a0b002"
 GAME_USER="hytale"
 GAME_DIR="/home/${GAME_USER}"
-GAME_SERVICE="hytale-server"
+GAME_SERVICE_BASE="hytale-server"
 
 # compile:usage
 # compile:argparse
@@ -62,6 +64,27 @@ GAME_SERVICE="hytale-server"
 # scriptlet:_common/firewall_allow.sh
 
 print_header "$GAME_DESC *unofficial* Installer"
+
+############################################
+## Multi-Instance Support
+############################################
+
+# Generate instance ID if not provided
+if [ -z "$INSTANCE_ID" ]; then
+	INSTANCE_ID=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen 2>/dev/null || python3 -c "import uuid; print(uuid.uuid4())" 2>/dev/null)
+	if [ -z "$INSTANCE_ID" ]; then
+		# Fallback: generate a simple UUID-like string
+		INSTANCE_ID=$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' ')
+		INSTANCE_ID="${INSTANCE_ID:0:8}-${INSTANCE_ID:8:4}-${INSTANCE_ID:12:4}-${INSTANCE_ID:16}"
+	fi
+fi
+
+# Set service name based on instance
+if [ "$INSTANCE_ID" != "default" ]; then
+	GAME_SERVICE="${GAME_SERVICE_BASE}@${INSTANCE_ID}"
+else
+	GAME_SERVICE="${GAME_SERVICE_BASE}"
+fi
 
 ############################################
 ## Installer Actions
@@ -143,9 +166,17 @@ function install_application() {
 	chown $GAME_USER:$GAME_USER "$GAME_DIR/installer.sh"
 	
 	# Use the management script to install the game server
-	if ! $GAME_DIR/manage.py --update; then
-		echo "Could not install $GAME_DESC, exiting" >&2
-		exit 1
+	# Pass instance ID if provided
+	if [ "$INSTANCE_ID" != "default" ]; then
+		if ! $GAME_DIR/manage.py --instance "$INSTANCE_ID" --update; then
+			echo "Could not install $GAME_DESC, exiting" >&2
+			exit 1
+		fi
+	else
+		if ! $GAME_DIR/manage.py --update; then
+			echo "Could not install $GAME_DESC, exiting" >&2
+			exit 1
+		fi
 	fi
 
 	firewall_allow --port 5520 --udp --comment "${GAME_DESC} Game Port"
@@ -162,7 +193,12 @@ EOF
 	if [ -n "$WARLOCK_GUID" ]; then
 		# Register Warlock
 		[ -d "/var/lib/warlock" ] || mkdir -p "/var/lib/warlock"
-		echo -n "$GAME_DIR" > "/var/lib/warlock/${WARLOCK_GUID}.app"
+		# Use multi-instance registration format if instance ID is provided
+		if [ "$INSTANCE_ID" != "default" ]; then
+			echo -n "$GAME_DIR" > "/var/lib/warlock/${WARLOCK_GUID}.${INSTANCE_ID}.app"
+		else
+			echo -n "$GAME_DIR" > "/var/lib/warlock/${WARLOCK_GUID}.app"
+		fi
 	fi
 }
 
@@ -184,11 +220,12 @@ function postinstall() {
 function uninstall_application() {
 	print_header "Performing uninstall_application"
 
-	systemctl disable $GAME_SERVICE
-	systemctl stop $GAME_SERVICE
+	systemctl disable $GAME_SERVICE 2>/dev/null || true
+	systemctl stop $GAME_SERVICE 2>/dev/null || true
 
-	# Service files
+	# Service files - try both single and template unit formats
 	[ -e "/etc/systemd/system/${GAME_SERVICE}.service" ] && rm "/etc/systemd/system/${GAME_SERVICE}.service"
+	[ -e "/etc/systemd/system/${GAME_SERVICE}.socket" ] && rm "/etc/systemd/system/${GAME_SERVICE}.socket"
 
 	# Game files
 	[ -d "$GAME_DIR" ] && rm -rf "$GAME_DIR/AppFiles"
@@ -199,8 +236,9 @@ function uninstall_application() {
 	[ -d "$GAME_DIR/.venv" ] && rm -rf "$GAME_DIR/.venv"
 
 	if [ -n "$WARLOCK_GUID" ]; then
-		# unregister Warlock
+		# unregister Warlock - handle both single-instance and multi-instance formats
 		[ -e "/var/lib/warlock/${WARLOCK_GUID}.app" ] && rm "/var/lib/warlock/${WARLOCK_GUID}.app"
+		[ -e "/var/lib/warlock/${WARLOCK_GUID}.${INSTANCE_ID}.app" ] && rm "/var/lib/warlock/${WARLOCK_GUID}.${INSTANCE_ID}.app"
 	fi
 }
 
@@ -245,10 +283,21 @@ else
 	echo "Using default installation directory of ${GAME_DIR}"
 fi
 
-if [ -e "/etc/systemd/system/${GAME_SERVICE}.service" ]; then
-	EXISTING=1
+# Check if this specific instance already exists
+if [ "$INSTANCE_ID" != "default" ]; then
+	# For multi-instance, check if the instance-specific service exists
+	if [ -e "/etc/systemd/system/${GAME_SERVICE}.service" ] && systemctl is-active --quiet "${GAME_SERVICE}"; then
+		EXISTING=1
+	else
+		EXISTING=0
+	fi
 else
-	EXISTING=0
+	# For single instance, check the base service
+	if [ -e "/etc/systemd/system/${GAME_SERVICE}.service" ]; then
+		EXISTING=1
+	else
+		EXISTING=0
+	fi
 fi
 
 ############################################
@@ -285,7 +334,11 @@ if [ "$MODE" == "uninstall" ]; then
 	fi
 
 	if prompt_yn -q --default-yes "Perform a backup before everything is wiped?"; then
-		$GAME_DIR/manage.py --backup
+		if [ "$INSTANCE_ID" != "default" ]; then
+			$GAME_DIR/manage.py --instance "$INSTANCE_ID" --backup
+		else
+			$GAME_DIR/manage.py --backup
+		fi
 	fi
 
 	uninstall_application
