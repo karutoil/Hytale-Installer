@@ -13,7 +13,9 @@
             "--skip-firewall  - Do not install or configure a system firewall",
             "--non-interactive  - Run the installer in non-interactive mode (useful for scripted installs)",
             "--game-branch=<latest|pre-release> - Specify a specific branch of the game server to install DEFAULT=latest",
-            "--branch=<str> - Use a specific branch of the management script repository DEFAULT=main"
+            "--branch=<str> - Use a specific branch of the management script repository DEFAULT=main",
+            "--instance-id=<UUID> - Unique identifier for this game instance (generates UUID if omitted) OPTIONAL",
+            "--instance-name=<string> - Human-readable name for this game instance OPTIONAL"
         ],
         "default_timeout": "600",
         "shell": "shell",
