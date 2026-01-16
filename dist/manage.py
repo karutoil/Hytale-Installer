@@ -379,7 +379,7 @@ class BaseApp:
 	Game application manager
 	"""
 
-	def __init__(self, instance_id=''):
+	def __init__(self):
 		self.name = ''
 		"""
 		:type str:
@@ -390,12 +390,6 @@ class BaseApp:
 		"""
 		:type str:
 		Description / full name of this game
-		"""
-
-		self.instance_id = instance_id
-		"""
-		:type str:
-		Instance ID for multi-instance support
 		"""
 
 		self.services = []
@@ -2508,10 +2502,9 @@ def run_manager(game):
 		action='store_true'
 	)
 
-	# Instance specification - for multi-instance support
 	parser.add_argument(
 		'--instance',
-		help='Specify the instance ID for multi-instance installations (optional)',
+		help='Instance ID to scope operations (UUID)',
 		type=str,
 		default='',
 		metavar='instance-id'
@@ -2639,6 +2632,11 @@ def run_manager(game):
 		action='store_true'
 	)'''
 	game_actions.add_argument(
+
+	if args.instance:
+		# Align game state with requested instance before any service lookups
+		game.instance_id = args.instance
+		game.configure_services()
 		'--first-run',
 		help='Perform first-run configuration for setting up the game server initially',
 		action='store_true'
@@ -2815,26 +2813,24 @@ here = os.path.dirname(os.path.realpath(__file__))
 class GameApp(BaseApp):
 	"""
 	Game application manager
+	
+	Multi-instance support:
+	This class supports multiple instances of Hytale on the same host.
+	Each instance has its own UUID, systemd service, directories, configs, and ports.
+	When --instance <INSTANCE_ID> is provided, operations are scoped to that instance.
 	"""
 
-	def __init__(self, instance_id=''):
-		super().__init__(instance_id)
+	def __init__(self):
+		super().__init__()
 
 		self.name = 'Hytale'
 		self.desc = 'Hytale Dedicated Server'
-		
-		# Support multi-instance configurations
-		# If instance_id is set, append it to service names and update paths
-		base_service = 'hytale-server'
-		if self.instance_id:
-			service_name = f'{base_service}@{self.instance_id}'
-		else:
-			service_name = base_service
-		
-		self.services = (service_name,)
+		self.base_service = 'hytale-server'
+		self.configure_services()
 
+		config_path = os.path.join(here, '.settings.ini')
 		self.configs = {
-			'manager': INIConfig('manager', os.path.join(here, '.settings.ini'))
+			'manager': INIConfig('manager', config_path)
 		}
 		self.load()
 
@@ -2862,6 +2858,12 @@ class GameApp(BaseApp):
 			save_dir = os.path.join(save_dir, f'instance-{self.instance_id}')
 		return save_dir
 
+	def configure_services(self):
+		"""Configure service names based on current instance_id and reset cache."""
+		service_name = f"{self.base_service}@{self.instance_id}" if self.instance_id else self.base_service
+		self.services = (service_name,)
+		self._svcs = None  # Reset cached services so get_services rebuilds
+
 	def get_latest_version(self) -> str:
 		"""
 		Get the latest version of the game server available from Hytale
@@ -2875,6 +2877,7 @@ class GameApp(BaseApp):
 		branch = self.get_option_value('Game Branch')
 		if branch != 'latest':
 			args += ['-patchline', branch]
+		
 		process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=game_path)
 		while True:
 			output = process.stdout.readline()
@@ -2919,7 +2922,7 @@ class GameApp(BaseApp):
 		:return:
 		"""
 		# Stop any running services before updating
-		services = []
+		services, all_stopped = [], False
 		for service in self.get_services():
 			if service.is_running() or service.is_starting():
 				print('Stopping service %s for update...' % service.service)
@@ -2943,7 +2946,6 @@ class GameApp(BaseApp):
 		else:
 			print('No running services found, proceeding with update...')
 
-
 		version = self.get_latest_version()
 		zip_path = os.path.join(here, 'AppFiles', version + '.zip')
 		if not os.path.exists(zip_path):
@@ -2954,6 +2956,7 @@ class GameApp(BaseApp):
 			branch = self.get_option_value('Game Branch')
 			if branch != 'latest':
 				args += ['-patchline', branch]
+			
 			process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=game_path)
 			while True:
 				output = process.stdout.readline()
@@ -2987,11 +2990,16 @@ class GameApp(BaseApp):
 class GameService(BaseService):
 	"""
 	Service definition and handler
+	
+	Multi-instance support:
+	Service names include instance ID to avoid conflicts when multiple instances
+	are running on the same host (e.g., hytale-server@instance-uuid.service).
 	"""
 	def __init__(self, service: str, game: GameApp):
 		"""
 		Initialize and load the service definition
-		:param file:
+		:param service: Service name (includes instance ID if multi-instance)
+		:param game: GameApp instance
 		"""
 		super().__init__(service, game)
 		self.service = service
@@ -3141,6 +3149,12 @@ def menu_first_run(game: GameApp):
 		print('NOTICE: You must authenticate with Hytale during server start!')
 		print('')
 		print('Starting service once to allow authentication, please wait...')
+		print('Service name: %s' % svc.service)
+		
+		# Ensure service is enabled before attempting to start
+		subprocess.run(['systemctl', 'enable', svc.service + '.service'], check=False, stderr=subprocess.DEVNULL)
+		subprocess.run(['systemctl', 'enable', svc.service + '.socket'], check=False, stderr=subprocess.DEVNULL)
+		subprocess.run(['systemctl', 'daemon-reload'], check=False, stderr=subprocess.DEVNULL)
 
 		svc.start()
 		counter = 0
@@ -3151,7 +3165,9 @@ def menu_first_run(game: GameApp):
 			time.sleep(1)
 
 		if not svc.is_running():
-			print('ERROR: Service failed to start for authentication, please check logs.')
+			print('ERROR: Service failed to start for authentication.')
+			print('Please check service status with: systemctl status %s' % svc.service)
+			print('And check logs with: journalctl -u %s -n 50' % svc.service)
 			sys.exit(1)
 
 		svc._api_cmd('/auth login device')
@@ -3180,10 +3196,5 @@ def menu_first_run(game: GameApp):
 
 
 if __name__ == '__main__':
-	# Parse arguments first to get instance_id if provided
-	temp_parser = argparse.ArgumentParser(add_help=False)
-	temp_parser.add_argument('--instance', type=str, default='')
-	temp_args, _ = temp_parser.parse_known_args()
-	
-	game = GameApp(temp_args.instance)
+	game = GameApp()
 	run_manager(game)
