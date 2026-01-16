@@ -35,6 +35,11 @@ here = os.path.dirname(os.path.realpath(__file__))
 class GameApp(BaseApp):
 	"""
 	Game application manager
+	
+	Multi-instance support:
+	This class supports multiple instances of Hytale on the same host.
+	Each instance has its own UUID, systemd service, directories, configs, and ports.
+	When --instance <INSTANCE_ID> is provided, operations are scoped to that instance.
 	"""
 
 	def __init__(self):
@@ -209,11 +214,15 @@ class GameApp(BaseApp):
 class GameService(BaseService):
 	"""
 	Service definition and handler
+	
+	Multi-instance support:
+	Service names include instance ID to avoid conflicts when multiple instances
+	are running on the same host (e.g., hytale-server@instance-uuid.service).
 	"""
 	def __init__(self, service: str, game: GameApp):
 		"""
 		Initialize and load the service definition
-		:param service: Service name (may include instance ID)
+		:param service: Service name (includes instance ID if multi-instance)
 		:param game: GameApp instance
 		"""
 		super().__init__(service, game)
